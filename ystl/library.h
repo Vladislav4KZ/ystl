@@ -6,6 +6,9 @@
 #include <ystl/platform.h>
 #include <ystl/string.h>
 #include <ystl/utility.h>
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
 
 #if !defined(YSTL_WINDOWS)
   #if defined(YSTL_PSVITA)
@@ -87,7 +90,22 @@ public:
     load_flags |= RTLD_DEEPBIND;
     #endif
   #endif
+    // Clear any previous dynamic loader error.
+    (void) dlerror();
     handle_ = dlopen (file.chars (), load_flags);
+  #if defined(__ANDROID__)
+      if (!handle_) {
+        const char *error = dlerror();
+
+        __android_log_print (
+          ANDROID_LOG_ERROR,
+          "YaPB-dlopen",
+          "Failed to load '%s': %s",
+          file.chars (),
+          error ? error : "<dlerror returned nullptr>"
+        );
+      }
+  #endif
 #endif
     return handle_ != nullptr;
   }
