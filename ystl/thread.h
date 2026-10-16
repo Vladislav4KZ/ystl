@@ -11,6 +11,9 @@
 
 #if !defined(YSTL_WINDOWS)
   #include <pthread.h>
+  #if defined(YSTL_FREEBSD)
+    #include <pthread_np.h>
+  #endif
   #include <sched.h>
   #include <errno.h>
 #else
