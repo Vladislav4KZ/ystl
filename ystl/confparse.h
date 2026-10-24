@@ -379,27 +379,7 @@ public:
 private:
   // allocation-free ascii case-insensitive comparison
   static bool equals_no_case (StringRef lhs, StringRef rhs) {
-    if (lhs.size () != rhs.size ()) {
-      return false;
-    }
-    const auto *a = lhs.chars ();
-    const auto *b = rhs.chars ();
-
-    for (size_t i = 0; i < lhs.size (); ++i) {
-      auto ca = a[i];
-      auto cb = b[i];
-
-      if (ca >= 'A' && ca <= 'Z') {
-        ca += 'a' - 'A';
-      }
-      if (cb >= 'A' && cb <= 'Z') {
-        cb += 'a' - 'A';
-      }
-      if (ca != cb) {
-        return false;
-      }
-    }
-    return true;
+    return lhs.equals_no_case (rhs);
   }
 };
 
