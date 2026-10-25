@@ -16,6 +16,7 @@
 #endif
 
 #if defined(YSTL_HAS_SIMD_SSE)
+  #include <bit>
   #include <smmintrin.h>
 #elif defined(YSTL_HAS_SIMD_NEON)
   #include <arm_neon.h>

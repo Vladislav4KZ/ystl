@@ -140,3 +140,63 @@ TEST_CASE ("String benchmark [benchmark][string]") {
     BENCHMARK_ADVANCED_END;
   }
 }
+
+// raw kernel cost: simd scan vs the crt the xp build otherwise pulls from msvcrt
+TEST_CASE ("CRT string kernels benchmark [benchmark][string][simd]") {
+#if defined(YSTL_HAS_SIMD_SSE)
+  alignas (64) static char long_text[4096 + 1];
+  alignas (64) static char short_text[65];
+
+  for (size_t i = 0; i < 4096; ++i) {
+    long_text[i] = static_cast<char> ('a' + static_cast<int> (i % 26));
+  }
+  long_text[4095] = 'Z'; // search target lives right at the tail
+  long_text[4096] = kNullChar;
+
+  memset (short_text, 'a', 64);
+  short_text[64] = kNullChar;
+
+  BENCHMARK_ADVANCED ("strlen 4k simd") {
+    meter.measure ([] {
+      ystl::benchmark::deoptimize_value (ystl::simd::strlen_ps (long_text));
+    });
+  }
+  BENCHMARK_ADVANCED_END;
+
+  BENCHMARK_ADVANCED ("strlen 4k crt") {
+    meter.measure ([] {
+      ystl::benchmark::deoptimize_value (strlen (long_text));
+    });
+  }
+  BENCHMARK_ADVANCED_END;
+
+  BENCHMARK_ADVANCED ("memchr 4k simd") {
+    meter.measure ([] {
+      ystl::benchmark::deoptimize_value (ystl::simd::memchr_ps (long_text, 'Z', 4096));
+    });
+  }
+  BENCHMARK_ADVANCED_END;
+
+  BENCHMARK_ADVANCED ("memchr 4k crt") {
+    meter.measure ([] {
+      ystl::benchmark::deoptimize_value (memchr (long_text, 'Z', 4096));
+    });
+  }
+  BENCHMARK_ADVANCED_END;
+
+  BENCHMARK_ADVANCED ("strchr 4k simd") {
+    meter.measure ([] {
+      ystl::benchmark::deoptimize_value (ystl::simd::strchr_ps (long_text, 'Z'));
+    });
+  }
+  BENCHMARK_ADVANCED_END;
+
+  BENCHMARK_ADVANCED ("strchr 4k crt") {
+    meter.measure ([] {
+      ystl::benchmark::deoptimize_value (strchr (long_text, 'Z'));
+    });
+  }
+  BENCHMARK_ADVANCED_END;
+
+#endif
+}

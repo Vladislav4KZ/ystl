@@ -8,6 +8,23 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 
+// approximate simd math: on by default for the windows xp baseline (slow downlevel crt),
+// YSTL_NO_APPROX_MATH keeps the crt path for bisecting accuracy issues
+#if defined(YSTL_HAS_WINXP_SUPPORT) && !defined(YSTL_APPROX_MATH) && !defined(YSTL_NO_APPROX_MATH)
+  #define YSTL_APPROX_MATH
+#endif
+
+#if defined(YSTL_HAS_SIMD_SSE)
+  #include <bit>
+  #include <stddef.h>
+  #include <stdint.h>
+  #include <smmintrin.h>
+
+namespace ystl::simd {
+  #include <ystl/simd/sse2.h>
+}
+#endif
+
 namespace ystl {
 
 constexpr float kFloatOnEpsilon = 0.01f;
@@ -54,7 +71,9 @@ template <typename T> constexpr T sqrf (const T &value) {
 }
 
 YSTL_FORCE_INLINE float sinf (const float value) {
-#if defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
+#if defined(YSTL_APPROX_MATH) && defined(YSTL_HAS_SIMD_SSE)
+  return _mm_cvtss_f32 (ystl::simd::sin_ps (_mm_set1_ps (value)));
+#elif defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
   return __builtin_sinf (value);
 #else
   return ::sinf (value);
@@ -62,7 +81,9 @@ YSTL_FORCE_INLINE float sinf (const float value) {
 }
 
 YSTL_FORCE_INLINE float cosf (const float value) {
-#if defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
+#if defined(YSTL_APPROX_MATH) && defined(YSTL_HAS_SIMD_SSE)
+  return _mm_cvtss_f32 (ystl::simd::cos_ps (_mm_set1_ps (value)));
+#elif defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
   return __builtin_cosf (value);
 #else
   return ::cosf (value);
@@ -70,7 +91,9 @@ YSTL_FORCE_INLINE float cosf (const float value) {
 }
 
 YSTL_FORCE_INLINE float atan2f (const float y, const float x) {
-#if defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
+#if defined(YSTL_APPROX_MATH) && defined(YSTL_HAS_SIMD_SSE)
+  return _mm_cvtss_f32 (ystl::simd::atan2_ps (_mm_set1_ps (y), _mm_set1_ps (x)));
+#elif defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
   return __builtin_atan2f (y, x);
 #else
   return ::atan2f (y, x);
@@ -78,7 +101,9 @@ YSTL_FORCE_INLINE float atan2f (const float y, const float x) {
 }
 
 YSTL_FORCE_INLINE float powf (const float x, const float y) {
-#if defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
+#if defined(YSTL_APPROX_MATH) && defined(YSTL_HAS_SIMD_SSE)
+  return _mm_cvtss_f32 (ystl::simd::pow_ps (_mm_set1_ps (x), _mm_set1_ps (y)));
+#elif defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
   return __builtin_powf (x, y);
 #else
   return ::powf (x, y);
@@ -99,7 +124,9 @@ YSTL_FORCE_INLINE float rsqrtf (const float value) {
 }
 
 YSTL_FORCE_INLINE float tanf (const float value) {
-#if defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
+#if defined(YSTL_APPROX_MATH) && defined(YSTL_HAS_SIMD_SSE)
+  return _mm_cvtss_f32 (ystl::simd::tan_ps (_mm_set1_ps (value)));
+#elif defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
   return __builtin_tanf (value);
 #else
   return ::tanf (value);
@@ -107,7 +134,9 @@ YSTL_FORCE_INLINE float tanf (const float value) {
 }
 
 YSTL_FORCE_INLINE float log10f (const float value) {
-#if defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
+#if defined(YSTL_APPROX_MATH) && defined(YSTL_HAS_SIMD_SSE)
+  return _mm_cvtss_f32 (ystl::simd::log10_ps (_mm_set1_ps (value)));
+#elif defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
   return __builtin_log10f (value);
 #else
   return ::log10f (value);
@@ -115,7 +144,9 @@ YSTL_FORCE_INLINE float log10f (const float value) {
 }
 
 YSTL_FORCE_INLINE float logf (const float value) {
-#if defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
+#if defined(YSTL_APPROX_MATH) && defined(YSTL_HAS_SIMD_SSE)
+  return _mm_cvtss_f32 (ystl::simd::log_ps (_mm_set1_ps (value)));
+#elif defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
   return __builtin_logf (value);
 #else
   return ::logf (value);
@@ -123,7 +154,9 @@ YSTL_FORCE_INLINE float logf (const float value) {
 }
 
 YSTL_FORCE_INLINE float expf (const float value) {
-#if defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
+#if defined(YSTL_APPROX_MATH) && defined(YSTL_HAS_SIMD_SSE)
+  return _mm_cvtss_f32 (ystl::simd::exp_ps (_mm_set1_ps (value)));
+#elif defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
   return __builtin_expf (value);
 #else
   return ::expf (value);
@@ -135,7 +168,9 @@ YSTL_FORCE_INLINE float expf (const float value) {
 #endif
 
 YSTL_FORCE_INLINE float floorf (const float value) {
-#if defined(YSTL_ROUND_ARITHMETIC)
+#if defined(YSTL_APPROX_MATH) && defined(YSTL_HAS_SIMD_SSE)
+  return _mm_cvtss_f32 (ystl::simd::floor_ps (_mm_set1_ps (value)));
+#elif defined(YSTL_ROUND_ARITHMETIC)
   if (value >= 8388608.0f || value <= -8388608.0f) {
     return value;
   }
@@ -152,7 +187,9 @@ YSTL_FORCE_INLINE float floorf (const float value) {
 }
 
 YSTL_FORCE_INLINE float ceilf (const float value) {
-#if defined(YSTL_ROUND_ARITHMETIC)
+#if defined(YSTL_APPROX_MATH) && defined(YSTL_HAS_SIMD_SSE)
+  return _mm_cvtss_f32 (ystl::simd::ceil_ps (_mm_set1_ps (value)));
+#elif defined(YSTL_ROUND_ARITHMETIC)
   if (value >= 8388608.0f || value <= -8388608.0f) {
     return value;
   }
@@ -168,7 +205,9 @@ YSTL_FORCE_INLINE float ceilf (const float value) {
 }
 
 YSTL_FORCE_INLINE float roundf (const float value) {
-#if defined(YSTL_ROUND_ARITHMETIC)
+#if defined(YSTL_APPROX_MATH) && defined(YSTL_HAS_SIMD_SSE)
+  return _mm_cvtss_f32 (ystl::simd::round_ps (_mm_set1_ps (value)));
+#elif defined(YSTL_ROUND_ARITHMETIC)
   if (value >= 8388608.0f || value <= -8388608.0f) {
     return value;
   }
@@ -182,7 +221,14 @@ YSTL_FORCE_INLINE float roundf (const float value) {
 }
 
 YSTL_FORCE_INLINE void sincosf (const float &x, float &s, float &c) {
-#if defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
+#if defined(YSTL_APPROX_MATH) && defined(YSTL_HAS_SIMD_SSE)
+  __m128 vs {};
+  __m128 vc {};
+
+  ystl::simd::sincos_ps (_mm_set1_ps (x), vs, vc);
+  s = _mm_cvtss_f32 (vs);
+  c = _mm_cvtss_f32 (vc);
+#elif defined(YSTL_CXX_GCC) || defined(YSTL_CXX_CLANG)
   s = __builtin_sinf (x);
   c = __builtin_cosf (x);
 #else

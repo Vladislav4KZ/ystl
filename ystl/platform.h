@@ -74,6 +74,15 @@ namespace ystl {
   #define YSTL_CXX_GCC __GNUC__
 #endif
 
+// address sanitizer: unbounded simd string scans read past the terminator
+#if defined(__SANITIZE_ADDRESS__)
+  #define YSTL_ASAN 1
+#elif defined(__has_feature)
+  #if __has_feature(address_sanitizer)
+    #define YSTL_ASAN 1
+  #endif
+#endif
+
 // configure macroses
 #define YSTL_C_LINKAGE extern "C"
 
@@ -153,18 +162,26 @@ namespace ystl {
 #endif
 
 // define export macros
-#if !defined(__GNUC__) || defined(YSTL_WINDOWS)
+#if defined(YSTL_CXX_MSVC) || defined(YSTL_CXX_CLANG_CL)
   #define YSTL_FORCE_STACK_ALIGN
   #define YSTL_EXPORT YSTL_C_LINKAGE __declspec(dllexport)
   #define YSTL_STDCALL __stdcall
 #else
+  // gcc/clang on i386 windows must realign the stack: the engine calls these
+  // with msvc's 4-byte alignment, while the compiler assumes 16 bytes
   #if defined(__i386__)
     #define YSTL_FORCE_STACK_ALIGN __attribute__((force_align_arg_pointer,noinline))
   #else
     #define YSTL_FORCE_STACK_ALIGN
   #endif
-  #define YSTL_EXPORT YSTL_C_LINKAGE YSTL_FORCE_STACK_ALIGN __attribute__((visibility("default"),used))
-  #define YSTL_STDCALL
+
+  #if defined(YSTL_WINDOWS)
+    #define YSTL_EXPORT YSTL_C_LINKAGE YSTL_FORCE_STACK_ALIGN __declspec(dllexport)
+    #define YSTL_STDCALL __stdcall
+  #else
+    #define YSTL_EXPORT YSTL_C_LINKAGE YSTL_FORCE_STACK_ALIGN __attribute__((visibility("default"),used))
+    #define YSTL_STDCALL
+  #endif
 #endif
 
 // msvc and clang-cl provide us placement new by default

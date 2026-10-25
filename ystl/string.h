@@ -115,11 +115,30 @@ inline SNPrintfWrap &fmtwrap () {
 namespace detail {
 static constexpr size_t kInvalidIndex = static_cast<size_t> (-1);
 
+constexpr const void *find_byte_impl (const void *src, size_t src_len, uint8_t pattern) noexcept {
+  if (ystl::is_constant_evaluated ()) {
+    const auto *bytes = static_cast<const uint8_t *> (src);
+
+    for (size_t i = 0; i < src_len; ++i) {
+      if (bytes[i] == pattern) {
+        return bytes + i;
+      }
+    }
+    return nullptr;
+  }
+#if defined(YSTL_HAS_SIMD_SSE) && defined(YSTL_WINDOWS)
+  // the windows crts use a scalar scan; glibc/libc++ are already vectorized
+  return ystl::simd::memchr_ps (src, pattern, src_len);
+#else
+  return memchr (src, pattern, src_len);
+#endif
+}
+
 constexpr size_t find_char_impl (const char *src, size_t src_len, char pattern, size_t start) noexcept {
   if (start >= src_len) {
     return kInvalidIndex;
   }
-  auto ptr = static_cast<const char *> (memchr (src + start, static_cast<uint8_t> (pattern), src_len - start));
+  auto ptr = static_cast<const char *> (find_byte_impl (src + start, src_len - start, static_cast<uint8_t> (pattern)));
   return ptr ? static_cast<size_t> (ptr - src) : kInvalidIndex;
 }
 
@@ -147,7 +166,7 @@ constexpr size_t find_str_impl (const char *src, size_t src_len, const char *pat
   const auto max_start = src_len - pat_len;
 
   while (i <= max_start) {
-    const void *ptr = memchr (s + i, first, max_start - i + 1);
+    const void *ptr = find_byte_impl (s + i, max_start - i + 1, first);
 
     if (!ptr) {
       return kInvalidIndex;
@@ -544,12 +563,17 @@ private:
     return count;
   }
 
-  // runtime length: the crt strlen is ~2.5x faster than the loop above
+  // runtime length: simd is ~2x faster than the crt on long strings, fall back
+  // to the crt under asan where the vector scan reads past the terminator
   static constexpr size_t lenstr (const char *str) noexcept {
     if (ystl::is_constant_evaluated ()) {
       return lenstr_loop (str);
     }
+#if defined(YSTL_HAS_SIMD_SSE) && defined(YSTL_WINDOWS) && !defined(YSTL_ASAN)
+    return ystl::simd::strlen_ps (str);
+#else
     return strlen (str);
+#endif
   }
 
 public:
@@ -1589,9 +1613,15 @@ public:
     if (!pattern || pattern[0] == kNullChar) {
       return start; // matches find_str_impl for empty patterns
     }
+#if defined(YSTL_HAS_SIMD_SSE) && defined(YSTL_HAS_WINXP_SUPPORT) && defined(YSTL_CXX_GCC) && !defined(YSTL_CXX_CLANG)
+    // the mingw build resolves strstr to the slow legacy msvcrt one, the
+    // msvc/ucrt/glibc versions are vectorized and win on the other targets
+    return detail::find_str_impl (chars (), len, pattern, strlen (pattern), start);
+#else
     const auto *found = strstr (chars () + start, pattern);
 
     return found ? static_cast<size_t> (found - chars ()) : InvalidIndex;
+#endif
   }
 
   size_t find (StringRef pattern, size_t start = 0) const {

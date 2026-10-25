@@ -2,6 +2,8 @@
 #include <ystl/ystl.h>
 #include <ystl/test.h>
 
+#include <cfloat>
+
 using namespace ystl;
 
 [[maybe_unused]] static constexpr float kEps = 1e-4f;
@@ -319,5 +321,126 @@ TEST_CASE ("simd sincos_ps accuracy over the documented domain [simd]") {
   // measured worst case is ~7.2e-08 abs (~8 ulps); keep a comfortable margin
   REQUIRE (max_sin_err < 1e-6);
   REQUIRE (max_cos_err < 1e-6);
+}
+
+// simd string kernels must match the crt for every alignment and length
+TEST_CASE ("simd string kernels match the crt [simd]") {
+  alignas (64) static char haystack[128];
+  alignas (64) static char copy[128];
+
+  for (size_t length = 0; length < 96; ++length) {
+    for (size_t pad = 0; pad < 16; ++pad) {
+      char *str = haystack + pad;
+
+      for (size_t i = 0; i < length; ++i) {
+        str[i] = static_cast<char> ('a' + static_cast<int> ((i + pad) % 26));
+      }
+      str[length] = '\0';
+
+      REQUIRE (ystl::simd::strlen_ps (str) == strlen (str));
+      REQUIRE (ystl::simd::strlen_ps (str) == length);
+
+      for (char ch = 'a'; ch <= 'z'; ++ch) {
+        const char *simd = ystl::simd::strchr_ps (str, ch);
+        const char *crt = strchr (str, ch);
+
+        REQUIRE ((simd == nullptr) == (crt == nullptr));
+        if (simd && crt) {
+          REQUIRE (simd - str == crt - str);
+        }
+      }
+      REQUIRE (ystl::simd::strchr_ps (str, 'Q') == nullptr);
+
+      for (size_t start = 0; start < length; ++start) {
+        const auto *simd = static_cast<const char *> (ystl::simd::memchr_ps (str + start, static_cast<uint8_t> (str[start]), length - start));
+        REQUIRE (simd == str + start);
+      }
+      REQUIRE (ystl::simd::memchr_ps (str, 'Q', length) == nullptr);
+
+      memcpy (copy, str, length + 1);
+      REQUIRE (ystl::simd::strncmp_ps (str, copy, length + 1) == 0);
+
+      if (length) {
+        copy[length / 2] = static_cast<char> (copy[length / 2] + 1);
+
+        const int simd = ystl::simd::strncmp_ps (str, copy, length + 1);
+        const int crt = strncmp (str, copy, length + 1);
+
+        REQUIRE ((simd < 0) == (crt < 0));
+        REQUIRE ((simd > 0) == (crt > 0));
+        REQUIRE (simd != 0);
+      }
+    }
+  }
+}
+
+// log/exp kernels: relative error against libm over their useful ranges
+TEST_CASE ("simd log and exp kernels accuracy [simd]") {
+  const auto rel = [] (const __m128 value, const double reference) {
+    const auto got = static_cast<double> (_mm_cvtss_f32 (value));
+    const auto scale = ::fabs (reference) > 1.0 ? ::fabs (reference) : 1.0;
+
+    return ::fabs (got - reference) / scale;
+  };
+
+  double max_log = 0.0, max_log2 = 0.0, max_log10 = 0.0;
+
+  for (float x = 1.0e-3f; x < 1.0e4f; x *= 1.013f) {
+    volatile float xr = x;
+    const __m128 v = _mm_set1_ps (xr);
+    const auto reference = static_cast<double> (xr);
+
+    max_log = ystl::max (max_log, rel (ystl::simd::log_ps (v), ::log (reference)));
+    max_log2 = ystl::max (max_log2, rel (ystl::simd::log2_ps (v), ::log2 (reference)));
+    max_log10 = ystl::max (max_log10, rel (ystl::simd::log10_ps (v), ::log10 (reference)));
+  }
+
+  REQUIRE (max_log < 1e-5);
+  REQUIRE (max_log2 < 1e-5);
+  REQUIRE (max_log10 < 1e-5);
+
+  double max_exp = 0.0, max_exp2 = 0.0, max_exp10 = 0.0;
+
+  for (float x = -10.0f; x <= 10.0f; x += 0.013f) {
+    volatile float xr = x;
+    const __m128 v = _mm_set1_ps (xr);
+
+    max_exp = ystl::max (max_exp, rel (ystl::simd::exp_ps (v), ::exp (static_cast<double> (xr))));
+    max_exp2 = ystl::max (max_exp2, rel (ystl::simd::exp2_ps (v), ::exp2 (static_cast<double> (xr))));
+  }
+
+  for (float x = -3.0f; x <= 3.0f; x += 0.013f) {
+    volatile float xr = x;
+    const __m128 v = _mm_set1_ps (xr);
+
+    max_exp10 = ystl::max (max_exp10, rel (ystl::simd::exp10_ps (v), ::pow (10.0, static_cast<double> (xr))));
+  }
+
+  REQUIRE (max_exp < 1e-6);
+  REQUIRE (max_exp2 < 1e-6);
+  REQUIRE (max_exp10 < 1e-6);
+
+  double max_pow = 0.0;
+
+  for (float base = 0.1f; base < 10.0f; base *= 1.071f) {
+    for (float exponent = -3.0f; exponent <= 3.0f; exponent += 0.37f) {
+      const __m128 result = ystl::simd::pow_ps (_mm_set1_ps (base), _mm_set1_ps (exponent));
+      max_pow = ystl::max (max_pow, rel (result, ::pow (static_cast<double> (base), static_cast<double> (exponent))));
+    }
+  }
+
+  REQUIRE (max_pow < 1e-5);
+
+  // exact anchors, the zero special case lives in the range reduction now
+  REQUIRE (_mm_cvtss_f32 (ystl::simd::exp_ps (_mm_setzero_ps ())) == 1.0f);
+  REQUIRE (_mm_cvtss_f32 (ystl::simd::exp2_ps (_mm_setzero_ps ())) == 1.0f);
+  REQUIRE (_mm_cvtss_f32 (ystl::simd::exp10_ps (_mm_setzero_ps ())) == 1.0f);
+  REQUIRE (_mm_cvtss_f32 (ystl::simd::log_ps (_mm_set1_ps (1.0f))) == 0.0f);
+
+  // the scale clamp turns overflow into max and underflow into ~zero
+  REQUIRE (_mm_cvtss_f32 (ystl::simd::exp_ps (_mm_set1_ps (1000.0f))) == FLT_MAX);
+  REQUIRE (_mm_cvtss_f32 (ystl::simd::exp2_ps (_mm_set1_ps (1000.0f))) == FLT_MAX);
+  REQUIRE (_mm_cvtss_f32 (ystl::simd::exp10_ps (_mm_set1_ps (1000.0f))) == FLT_MAX);
+  REQUIRE (_mm_cvtss_f32 (ystl::simd::exp2_ps (_mm_set1_ps (-1000.0f))) <= 1.0e-37f);
 }
 #endif
